@@ -31,6 +31,10 @@ type queryHandler struct {
 	cancelFunc  context.CancelFunc
 	initialized bool
 	initResult  map[string]interface{}
+
+	// Track first result for proper stream closure with SDK MCP servers
+	firstResultChan chan struct{}
+	firstResultOnce sync.Once
 }
 
 type controlResult struct {
@@ -65,6 +69,7 @@ func newQueryHandler(
 		hookCallbacks:           make(map[string]HookCallback),
 		messageChan:             make(chan map[string]interface{}, bufferSize),
 		errorChan:               make(chan error, 1),
+		firstResultChan:         make(chan struct{}),
 	}
 }
 
@@ -110,6 +115,13 @@ func (q *queryHandler) routeMessages(ctx context.Context, msgCh <-chan map[strin
 			case "control_cancel_request":
 				// TODO: Implement cancellation
 			default:
+				// Track results for proper stream closure
+				if msgType == "result" {
+					q.firstResultOnce.Do(func() {
+						close(q.firstResultChan)
+					})
+				}
+
 				// Regular SDK message
 				select {
 				case q.messageChan <- msg:
@@ -474,6 +486,9 @@ func (q *queryHandler) SetModel(ctx context.Context, model string) error {
 }
 
 // StreamInput streams input messages to transport.
+//
+// If SDK MCP servers or hooks are present, waits for the first result
+// before closing stdin to allow bidirectional control protocol communication.
 func (q *queryHandler) StreamInput(ctx context.Context, stream <-chan map[string]interface{}) error {
 	for {
 		select {
@@ -481,7 +496,23 @@ func (q *queryHandler) StreamInput(ctx context.Context, stream <-chan map[string
 			return ctx.Err()
 		case msg, ok := <-stream:
 			if !ok {
-				// Stream closed, end input
+				// Stream closed
+				// If we have SDK MCP servers or hooks that need bidirectional communication,
+				// wait for first result before closing the channel
+				hasHooks := len(q.hooks) > 0
+				if len(q.sdkMcpServers) > 0 || hasHooks {
+					// Use 60 second timeout (matches Python SDK default)
+					timeout := 60 * time.Second
+					select {
+					case <-q.firstResultChan:
+						// First result received, proceed to close input
+					case <-time.After(timeout):
+						// Timeout waiting for first result, proceed anyway
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				}
+				// After all messages sent (and result received if needed), end input
 				return q.transport.EndInput()
 			}
 			data, err := json.Marshal(msg)

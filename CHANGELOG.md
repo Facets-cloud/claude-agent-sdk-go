@@ -7,7 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - Sync with Python SDK v0.1.10
+### Added - Complete Parity with Python SDK v0.1.10
+
+This update brings the Go SDK to full feature parity with Python SDK version 0.1.10, including critical features from recent Python SDK updates.
+
+#### Sandbox Settings Support (CRITICAL)
+- **`SandboxSettings`** type with comprehensive sandbox configuration
+  - `Enabled` - Enable/disable sandbox for bash commands
+  - `AutoAllowBashIfSandboxed` - Auto-approve sandboxed commands
+  - `ExcludedCommands` - Commands to run without sandbox
+  - `AllowUnsandboxedCommands` - Allow excluded commands to run unsandboxed
+  - `Network` - Network access configuration
+  - `IgnoreViolations` - Specify violations to ignore
+  - `EnableWeakerNestedSandbox` - Weaker isolation for nested sandboxes
+- **`SandboxNetworkConfig`** type for network restrictions
+  - `Enabled` - Enable/disable network access
+  - `AllowedDomains` - Domain whitelist (supports wildcards)
+  - `BlockedDomains` - Domain blacklist
+- **`SandboxIgnoreViolations`** type for violation exceptions
+  - `Commands` - Command patterns to ignore
+  - `Paths` - File path patterns to ignore
+- **`Sandbox`** field added to `ClaudeAgentOptions`
+- Settings merging logic - Sandbox settings automatically merged into `--settings` CLI argument
+- New example: `examples/sandbox/` with comprehensive sandbox usage
+- Unit tests: `tests/unit/sandbox_test.go` and `tests/unit/settings_merge_test.go`
+
+#### Bundled CLI Binary Support (HIGH)
+- **Embedded CLI binaries** - SDK now bundles Claude Code CLI v2.0.56 for all platforms
+  - darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64
+- **`bundled.go`** - Automatic CLI extraction and usage
+  - `getBundledCLIPath()` - Extracts bundled CLI to temp directory
+  - Fallback to bundled CLI when no system installation found
+- **`scripts/download_cli.go`** - Script to download and bundle CLI binaries
+- **`_bundled/` directory** structure for multi-platform binaries
+- **Updated `findCLI()`** - Checks bundled CLI after system paths
+- **`BundledCLIVersion`** constant in `cli_version.go`
+- CLI version updated to 2.0.56 (from 2.0.55)
+
+#### SessionStart/SessionEnd Hook Events (MEDIUM)
+- **`HookEventSessionStart`** - Hook fired when session starts
+- **`HookEventSessionEnd`** - Hook fired when session ends
+- **`SessionStartHookInput`** type - Typed input for SessionStart hooks
+- **`SessionEndHookInput`** type - Typed input for SessionEnd hooks
+- Complete hook lifecycle coverage
+
+#### Settings Field Enhancement (HIGH)
+- **JSON string parsing** - Settings field now accepts inline JSON strings
+- **Automatic format detection** - Distinguishes between JSON strings and file paths
+- **Sandbox merging** - Automatic merging of sandbox settings with existing settings
+- **`buildSettingsValue()`** method - Handles settings merging logic
+- Matches Python SDK's `_build_settings_value()` behavior
+
+#### MCP Stdin Wait Logic (MEDIUM)
+- **First result tracking** - Wait for first result before closing stdin
+- **`firstResultChan`** - Channel to signal first result received
+- **`firstResultOnce`** - Ensure signal only sent once
+- **Updated `StreamInput()`** - Wait logic when SDK MCP servers or hooks present
+- 60-second timeout matching Python SDK default
+- Fixes race condition with SDK MCP bidirectional communication
+- Prevents premature stdin closure
+
+#### System Prompt Default Handling (MEDIUM)
+- **Explicit empty string** - Pass `--system-prompt ""` when SystemPrompt is nil
+- Prevents using CLI's default system prompt when not intended
+- Matches Python SDK behavior exactly
+
+#### Concurrent Write Safety (LOW)
+- **`writeMu` mutex** - Dedicated mutex for serializing stdin writes
+- Prevents race conditions with concurrent Write() calls
+- Enhanced Write() method with proper lock separation
+
+#### Version Management
+- **`version.go`** - New file for SDK version constant
+- **`SDKVersion`** constant (0.1.0) - Centralized version tracking
+- Extracted from transport_subprocess.go for better organization
+
+### Changed
+- **Updated `buildCommand()`** signature - Now returns `([]string, error)` for error propagation
+- **Enhanced concurrent safety** - Separate read/write locks for state vs I/O operations
+- **Improved error messages** - Better CLI not found error with bundled CLI information
+
+### Fixed
+- Settings merging with sandbox configuration
+- Race condition with SDK MCP servers closing stdin too early
+- System prompt default behavior matching Python SDK
+- Concurrent write safety to stdin
+
+### Infrastructure
+- New download script for bundling CLI binaries across platforms
+- Unit tests for sandbox types and settings merging
+- Example program demonstrating sandbox configuration
+- Documentation updates for all new features
+
+---
+
+### Previous Release - Sync with Python SDK v0.1.10
 
 This release brings the Go SDK feature parity with Python SDK version 0.1.10.
 

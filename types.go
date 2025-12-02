@@ -34,6 +34,8 @@ const (
 	HookEventStop             HookEvent = "Stop"
 	HookEventSubagentStop     HookEvent = "SubagentStop"
 	HookEventPreCompact       HookEvent = "PreCompact"
+	HookEventSessionStart     HookEvent = "SessionStart"
+	HookEventSessionEnd       HookEvent = "SessionEnd"
 )
 
 // AssistantMessageError represents error types that can occur in assistant messages.
@@ -469,6 +471,18 @@ type PreCompactHookInput struct {
 	CustomInstructions *string `json:"custom_instructions,omitempty"`
 }
 
+// SessionStartHookInput is the input data for SessionStart hook events.
+type SessionStartHookInput struct {
+	BaseHookInput
+	HookEventName string `json:"hook_event_name"` // "SessionStart"
+}
+
+// SessionEndHookInput is the input data for SessionEnd hook events.
+type SessionEndHookInput struct {
+	BaseHookInput
+	HookEventName string `json:"hook_event_name"` // "SessionEnd"
+}
+
 // HookMatcher configures hook matching and callbacks.
 type HookMatcher struct {
 	Matcher string         // Tool name pattern or nil for all
@@ -536,6 +550,113 @@ type SdkPluginConfig struct {
 	Path string `json:"path"` // Path to the plugin directory
 }
 
+// SandboxNetworkConfig configures sandbox network access settings.
+//
+// The sandbox network feature allows you to control network access for bash
+// commands executed by Claude. This helps prevent unauthorized network operations
+// while still allowing necessary connectivity.
+type SandboxNetworkConfig struct {
+	// Enabled controls whether network access is allowed in the sandbox.
+	// When false, all network operations are blocked.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// AllowedDomains is a list of domain names that are permitted for network access.
+	// Supports wildcards (e.g., "*.example.com").
+	AllowedDomains []string `json:"allowedDomains,omitempty"`
+
+	// BlockedDomains is a list of domain names that are explicitly blocked from network access.
+	// Takes precedence over AllowedDomains.
+	BlockedDomains []string `json:"blockedDomains,omitempty"`
+}
+
+// SandboxIgnoreViolations specifies which sandbox violations should be ignored.
+//
+// By default, sandbox violations are logged and potentially blocked. This struct
+// allows you to selectively ignore certain types of violations.
+type SandboxIgnoreViolations struct {
+	// Commands is a list of command patterns to ignore violations for.
+	// Useful for trusted commands that may trigger false positives.
+	Commands []string `json:"commands,omitempty"`
+
+	// Paths is a list of file path patterns to ignore violations for.
+	// Useful for known safe directories or files.
+	Paths []string `json:"paths,omitempty"`
+}
+
+// SandboxSettings configures bash command sandboxing behavior.
+//
+// The sandbox feature provides an extra layer of security by isolating bash
+// commands executed by Claude. This helps prevent potentially dangerous operations
+// while still allowing Claude to perform necessary system tasks.
+//
+// Example - Enable basic sandboxing:
+//
+//	options := &ClaudeAgentOptions{
+//	    Sandbox: &SandboxSettings{
+//	        Enabled: boolPtr(true),
+//	    },
+//	}
+//
+// Example - Enable sandbox with auto-allow:
+//
+//	options := &ClaudeAgentOptions{
+//	    Sandbox: &SandboxSettings{
+//	        Enabled: boolPtr(true),
+//	        AutoAllowBashIfSandboxed: boolPtr(true), // Auto-approve sandboxed bash commands
+//	    },
+//	}
+//
+// Example - Configure network restrictions:
+//
+//	options := &ClaudeAgentOptions{
+//	    Sandbox: &SandboxSettings{
+//	        Enabled: boolPtr(true),
+//	        Network: &SandboxNetworkConfig{
+//	            Enabled: boolPtr(true),
+//	            AllowedDomains: []string{"*.github.com", "api.anthropic.com"},
+//	            BlockedDomains: []string{"malicious.com"},
+//	        },
+//	    },
+//	}
+//
+// Example - Allow specific unsandboxed commands:
+//
+//	options := &ClaudeAgentOptions{
+//	    Sandbox: &SandboxSettings{
+//	        Enabled: boolPtr(true),
+//	        ExcludedCommands: []string{"git", "npm"},
+//	        AllowUnsandboxedCommands: boolPtr(true),
+//	    },
+//	}
+type SandboxSettings struct {
+	// Enabled controls whether the sandbox is active.
+	// When true, bash commands are executed in an isolated environment.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// AutoAllowBashIfSandboxed automatically approves bash commands when sandbox is enabled.
+	// This is useful when you trust the sandbox to provide sufficient isolation.
+	AutoAllowBashIfSandboxed *bool `json:"autoAllowBashIfSandboxed,omitempty"`
+
+	// ExcludedCommands is a list of command names that should not be sandboxed.
+	// These commands will run directly on the host system without sandbox isolation.
+	// Use with caution, as excluded commands have full system access.
+	ExcludedCommands []string `json:"excludedCommands,omitempty"`
+
+	// AllowUnsandboxedCommands permits commands in ExcludedCommands to run without sandbox.
+	// When false, excluded commands are blocked rather than run unsandboxed.
+	AllowUnsandboxedCommands *bool `json:"allowUnsandboxedCommands,omitempty"`
+
+	// Network configures network access within the sandbox.
+	Network *SandboxNetworkConfig `json:"network,omitempty"`
+
+	// IgnoreViolations specifies which sandbox violations should be ignored.
+	IgnoreViolations *SandboxIgnoreViolations `json:"ignoreViolations,omitempty"`
+
+	// EnableWeakerNestedSandbox allows nested sandboxes to use weaker isolation.
+	// This is useful when running sandboxed commands within already-sandboxed environments.
+	EnableWeakerNestedSandbox *bool `json:"enableWeakerNestedSandbox,omitempty"`
+}
+
 // ClaudeAgentOptions contains all configuration options for Claude SDK.
 type ClaudeAgentOptions struct {
 	// Tool restrictions
@@ -578,6 +699,9 @@ type ClaudeAgentOptions struct {
 	// Settings
 	Settings       *string         `json:"settings,omitempty"`
 	SettingSources []SettingSource `json:"setting_sources,omitempty"`
+
+	// Sandbox configuration
+	Sandbox *SandboxSettings `json:"sandbox,omitempty"`
 
 	// Callbacks
 	CanUseTool CanUseTool                  `json:"-"` // Function, not serialized

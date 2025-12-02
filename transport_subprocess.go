@@ -18,7 +18,6 @@ import (
 
 const (
 	defaultMaxBufferSize     = 1024 * 1024 // 1MB
-	sdkVersion               = "0.1.0"
 	minimumClaudeCodeVersion = "2.0.0"
 	windowsCmdLengthLimit    = 8000   // Windows command line length limit
 	nonWindowsCmdLengthLimit = 100000 // Non-Windows systems have much higher limits
@@ -40,6 +39,7 @@ type SubprocessCLITransport struct {
 	maxBufferSize int
 	tempFiles     []string // Temporary files created for long command lines
 	mu            sync.RWMutex
+	writeMu       sync.Mutex // Serializes concurrent writes to stdin
 	stderrWg      sync.WaitGroup
 }
 
@@ -85,7 +85,7 @@ func NewSubprocessCLITransport(prompt interface{}, options *ClaudeAgentOptions, 
 
 // findCLI locates the Claude Code CLI binary.
 func findCLI() (string, error) {
-	// Check PATH first
+	// Check PATH first (prefer user-installed version)
 	if path, err := exec.LookPath("claude"); err == nil {
 		return path, nil
 	}
@@ -107,8 +107,14 @@ func findCLI() (string, error) {
 		}
 	}
 
+	// Finally, check for bundled CLI binary
+	if bundledPath, err := getBundledCLIPath(); err == nil && bundledPath != "" {
+		return bundledPath, nil
+	}
+
 	return "", NewCLINotFoundError(
-		"Claude Code not found. Install with:\n"+
+		"Claude Code CLI not found. The SDK comes with a bundled CLI, but it's not available for your platform.\n"+
+			"Please install Claude Code manually:\n"+
 			"  npm install -g @anthropic-ai/claude-code\n"+
 			"\nIf already installed locally, try:\n"+
 			`  export PATH="$HOME/node_modules/.bin:$PATH"`+
@@ -132,7 +138,10 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 	}
 
 	// Build command
-	args := t.buildCommand()
+	args, err := t.buildCommand()
+	if err != nil {
+		return fmt.Errorf("failed to build command: %w", err)
+	}
 	t.cmd = exec.CommandContext(ctx, t.cliPath, args...)
 
 	// Set working directory
@@ -148,7 +157,6 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 	t.cmd.Env = t.buildEnv()
 
 	// Setup pipes
-	var err error
 	t.stdin, err = t.cmd.StdinPipe()
 	if err != nil {
 		return NewCLIConnectionError("failed to create stdin pipe", err)
@@ -189,12 +197,78 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 	return nil
 }
 
+// buildSettingsValue builds the settings value, merging sandbox settings if provided.
+//
+// Returns the settings value as either:
+//   - A JSON string (if sandbox is provided or settings is JSON)
+//   - A file path (if only settings path is provided without sandbox)
+//   - Empty string if neither settings nor sandbox is provided
+func (t *SubprocessCLITransport) buildSettingsValue() (string, error) {
+	hasSettings := t.options.Settings != nil
+	hasSandbox := t.options.Sandbox != nil
+
+	if !hasSettings && !hasSandbox {
+		return "", nil
+	}
+
+	// If only settings path and no sandbox, pass through as-is
+	if hasSettings && !hasSandbox {
+		return *t.options.Settings, nil
+	}
+
+	// If we have sandbox settings, we need to merge into a JSON object
+	settingsObj := make(map[string]interface{})
+
+	if hasSettings {
+		settingsStr := strings.TrimSpace(*t.options.Settings)
+		// Check if settings is a JSON string or a file path
+		if strings.HasPrefix(settingsStr, "{") && strings.HasSuffix(settingsStr, "}") {
+			// Parse JSON string
+			if err := json.Unmarshal([]byte(settingsStr), &settingsObj); err != nil {
+				// If parsing fails, treat as file path
+				// Read the file
+				data, readErr := os.ReadFile(settingsStr)
+				if readErr == nil {
+					if jsonErr := json.Unmarshal(data, &settingsObj); jsonErr != nil {
+						return "", fmt.Errorf("failed to parse settings file %s: %w", settingsStr, jsonErr)
+					}
+				}
+			}
+		} else {
+			// It's a file path - read and parse
+			data, err := os.ReadFile(settingsStr)
+			if err != nil {
+				// File doesn't exist or can't be read - not an error, just skip
+			} else {
+				if err := json.Unmarshal(data, &settingsObj); err != nil {
+					return "", fmt.Errorf("failed to parse settings file %s: %w", settingsStr, err)
+				}
+			}
+		}
+	}
+
+	// Merge sandbox settings
+	if hasSandbox {
+		settingsObj["sandbox"] = t.options.Sandbox
+	}
+
+	jsonBytes, err := json.Marshal(settingsObj)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal settings: %w", err)
+	}
+
+	return string(jsonBytes), nil
+}
+
 // buildCommand constructs CLI arguments from options.
-func (t *SubprocessCLITransport) buildCommand() []string {
+func (t *SubprocessCLITransport) buildCommand() ([]string, error) {
 	args := []string{"--output-format", "stream-json", "--verbose"}
 
 	// System prompt
-	if t.options.SystemPrompt != nil {
+	if t.options.SystemPrompt == nil {
+		// Explicitly pass empty string to avoid using CLI's default system prompt
+		args = append(args, "--system-prompt", "")
+	} else {
 		switch sp := t.options.SystemPrompt.(type) {
 		case string:
 			args = append(args, "--system-prompt", sp)
@@ -257,9 +331,11 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		args = append(args, "--fork-session")
 	}
 
-	// Settings
-	if t.options.Settings != nil {
-		args = append(args, "--settings", *t.options.Settings)
+	// Settings (merge with sandbox if needed)
+	if settingsValue, err := t.buildSettingsValue(); err != nil {
+		return nil, err
+	} else if settingsValue != "" {
+		args = append(args, "--settings", settingsValue)
 	}
 
 	// Additional directories
@@ -381,7 +457,7 @@ func (t *SubprocessCLITransport) buildCommand() []string {
 		}
 	}
 
-	return args
+	return args, nil
 }
 
 // isWindows returns true if running on Windows
@@ -400,7 +476,7 @@ func (t *SubprocessCLITransport) buildEnv() []string {
 
 	// Add SDK identifier
 	env = append(env, "CLAUDE_CODE_ENTRYPOINT=sdk-go")
-	env = append(env, fmt.Sprintf("CLAUDE_AGENT_SDK_VERSION=%s", sdkVersion))
+	env = append(env, fmt.Sprintf("CLAUDE_AGENT_SDK_VERSION=%s", SDKVersion))
 
 	// Set PWD if cwd is specified
 	if t.cwd != "" {
@@ -429,25 +505,34 @@ func (t *SubprocessCLITransport) handleStderr() {
 
 // Write sends data to stdin.
 func (t *SubprocessCLITransport) Write(ctx context.Context, data string) error {
+	// Use read lock to check state
 	t.mu.RLock()
-	defer t.mu.RUnlock()
-
 	if !t.ready || t.stdin == nil {
+		t.mu.RUnlock()
 		return NewCLIConnectionError("transport is not ready for writing", nil)
 	}
 
 	if t.cmd.ProcessState != nil {
+		t.mu.RUnlock()
 		return NewCLIConnectionError(fmt.Sprintf("cannot write to terminated process (exit code: %d)", t.cmd.ProcessState.ExitCode()), nil)
 	}
 
 	if t.exitError != nil {
+		t.mu.RUnlock()
 		return NewCLIConnectionError(fmt.Sprintf("cannot write to process that exited with error: %v", t.exitError), t.exitError)
 	}
+	t.mu.RUnlock()
+
+	// Serialize concurrent writes to stdin
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
 
 	_, err := t.stdin.Write([]byte(data))
 	if err != nil {
+		t.mu.Lock()
 		t.ready = false
 		t.exitError = NewCLIConnectionError("failed to write to process stdin", err)
+		t.mu.Unlock()
 		return t.exitError
 	}
 
