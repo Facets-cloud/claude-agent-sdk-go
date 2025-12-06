@@ -97,6 +97,18 @@ func (q *queryHandler) routeMessages(ctx context.Context, msgCh <-chan map[strin
 			return
 		case err := <-errCh:
 			if err != nil {
+				// Signal all pending control requests so they fail fast instead of timing out
+				q.mu.Lock()
+				for _, resultChan := range q.pendingControlResponses {
+					select {
+					case resultChan <- controlResult{err: err}:
+						// Successfully sent error to this pending request
+					default:
+						// Channel already has a result, skip
+					}
+				}
+				q.mu.Unlock()
+
 				q.errorChan <- err
 			}
 			return

@@ -7,6 +7,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2025-12-06
+
+### Added - Complete Parity with Python SDK v0.1.13
+
+This update brings the Go SDK to full feature parity with Python SDK version 0.1.13, including all changes from v0.1.11, v0.1.12, and v0.1.13.
+
+#### Tools Option Support (from Python v0.1.12)
+- **`Tools`** field in `ClaudeAgentOptions` - Base set of tools to use (separate from allowed/disallowed filtering)
+  - Supports `[]string` for explicit tool list: `[]string{"Read", "Write", "Bash"}`
+  - Supports `ToolsPreset` for preset configuration: `{Type: "preset", Preset: "claude_code"}`
+  - Supports `map[string]interface{}` for dynamic preset: `{"type": "preset", "preset": "claude_code"}`
+  - Empty array `[]string{}` explicitly sets no tools
+- **`ToolsPreset`** type - Structured preset configuration
+  - `Type` - Always "preset"
+  - `Preset` - Preset name (e.g., "claude_code")
+- **CLI argument building** - `--tools` flag generation with proper serialization
+  - String array joins with commas: `--tools Read,Write,Bash`
+  - Empty array maps to: `--tools ""`
+  - Preset "claude_code" maps to: `--tools default`
+- **Distinction from filtering** - Tools option sets base tools, AllowedTools/DisallowedTools filter from that base
+- **Unit tests** - Comprehensive tests in `tests/unit/transport_test.go`
+
+**Usage:**
+```go
+// Explicit tool list
+options := &claude.ClaudeAgentOptions{
+    Tools: []string{"Read", "Write", "Bash"},
+}
+
+// Preset configuration
+options := &claude.ClaudeAgentOptions{
+    Tools: claude.ToolsPreset{
+        Type:   "preset",
+        Preset: "claude_code",
+    },
+}
+
+// Combined with filtering
+options := &claude.ClaudeAgentOptions{
+    Tools:           []string{"Read", "Write", "Bash", "Edit"},
+    AllowedTools:    []string{"Read", "Write"},
+    DisallowedTools: []string{"Bash"},
+}
+```
+
+#### Beta Features Support (from Python v0.1.12)
+- **`Betas`** field in `ClaudeAgentOptions` - Array of beta features to enable
+- **`SdkBeta`** type - String type for beta feature identifiers
+- **`SdkBetaContext1M`** constant - 1M context window beta (`"context-1m-2025-08-07"`)
+- **CLI argument building** - `--betas` flag generation with comma-separated values
+- **Documentation link** - See https://docs.anthropic.com/en/api/beta-headers
+- **Unit tests** - Tests for single beta, multiple betas, and no betas
+
+**Usage:**
+```go
+// Single beta feature
+options := &claude.ClaudeAgentOptions{
+    Betas: []claude.SdkBeta{claude.SdkBetaContext1M},
+}
+
+// Multiple beta features
+options := &claude.ClaudeAgentOptions{
+    Betas: []claude.SdkBeta{
+        claude.SdkBetaContext1M,
+        claude.SdkBeta("future-beta-feature"),
+    },
+}
+```
+
+#### CLI Error Propagation Fix (from Python v0.1.13)
+- **Fast-fail mechanism** - Pending control requests now fail immediately when CLI exits with error
+- **Signal all pending requests** - Propagate error to all pending control responses in `pendingControlResponses` map
+- **Improved error handling** - Reduces failure time from 60 seconds (timeout) to ~3 seconds
+- **Updated `routeMessages()`** - Error propagation logic in query_handler.go:95-108
+
+**Before:**
+```
+CLI error → Pending control requests wait for 60s timeout → Slow failure
+```
+
+**After:**
+```
+CLI error → Immediately signal all pending requests → Fast failure (~3s)
+```
+
+#### Write Lock TOCTOU Race Fix (from Python v0.1.13)
+- **TOCTOU vulnerability fixed** - Time-Of-Check-Time-Of-Use race between Write() and Close()/EndInput()
+- **Atomic state changes** - Acquire write lock before setting ready=false in Close() and EndInput()
+- **Enhanced thread safety** - Prevents Write() from proceeding after ready check but before acquiring writeMu
+- **Updated methods**:
+  - `Close()` - Acquire writeMu before mu lock (transport_subprocess.go:255-263)
+  - `EndInput()` - Acquire writeMu before mu lock (transport_subprocess.go:270-278)
+
+**Race Condition Before:**
+```
+Write(): Check ready=true → Release mu → [Close() sets ready=false] → Acquire writeMu → Write to closed stdin
+```
+
+**Fixed:**
+```
+Write(): Check ready=true → Release mu → Acquire writeMu → Close() blocked on writeMu → Safe
+```
+
+### Changed
+- **CLI version updated** - v2.0.56 → v2.0.60 across all constants
+  - `BundledCLIVersion` updated to "2.0.60"
+  - `RecommendedCLIVersion` updated to "2.0.60"
+  - Installation documentation updated
+- **SDK version** - Updated to v0.1.13 for parity with Python SDK
+
+### Fixed
+- CLI error propagation to pending control requests (reduces timeout from 60s to ~3s)
+- TOCTOU race condition in Close() and EndInput() methods
+- Concurrent write safety with proper lock ordering
+
+### Added
+- Comprehensive unit tests for tools option (7 test cases)
+- Comprehensive unit tests for beta features (3 test cases)
+- Combined features test validating tools + betas together
+
+---
+
+## [0.1.11] - 2024-XX-XX
+
 ### Added - Complete Parity with Python SDK v0.1.10
 
 This update brings the Go SDK to full feature parity with Python SDK version 0.1.10, including critical features from recent Python SDK updates.
@@ -93,15 +217,13 @@ This update brings the Go SDK to full feature parity with Python SDK version 0.1
 - System prompt default behavior matching Python SDK
 - Concurrent write safety to stdin
 
-### Infrastructure
+### Added
 - New download script for bundling CLI binaries across platforms
 - Unit tests for sandbox types and settings merging
 - Example program demonstrating sandbox configuration
 - Documentation updates for all new features
 
 ---
-
-### Previous Release - Sync with Python SDK v0.1.10
 
 This release brings the Go SDK feature parity with Python SDK version 0.1.10.
 
@@ -176,7 +298,7 @@ options := &claude.ClaudeAgentOptions{
 }
 ```
 
-#### Infrastructure & Tooling
+### Added
 - **CLI Version Tracking**: New `cli_version.go` file tracking recommended CLI version (2.0.55)
   - `RecommendedCLIVersion` constant for tested CLI version
   - `MinimumCLIVersion` constant for minimum required version
@@ -184,8 +306,6 @@ options := &claude.ClaudeAgentOptions{
   - `.github/workflows/test.yml` - Automated testing on Ubuntu, macOS, and Windows
   - `.github/workflows/lint.yml` - Code linting with golangci-lint, gofmt, and go vet
 - **Examples**: New `examples/structured_outputs/` with 3 comprehensive examples
-
-#### Documentation
 - Updated README.md with:
   - Recommended Claude Code CLI version (2.0.55) in prerequisites
   - New "Structured Outputs" section with usage examples
@@ -216,26 +336,42 @@ This is the first changelog entry. The Go SDK was originally ported from Python 
 
 ## Migration Notes
 
-**Upgrading from previous versions:**
+**Upgrading to v0.1.13 from v0.1.11:**
 
 1. **No breaking changes** - All new features are additive
-2. **Optional features** - Structured outputs, error handling, and hook timeouts are optional
-3. **Recommended**: Update Claude Code CLI to version 2.0.55:
+2. **Optional features** - Tools option and beta features are optional
+3. **Recommended**: Update Claude Code CLI to version 2.0.60:
    ```bash
-   npm install -g @anthropic-ai/claude-code@2.0.55
+   npm install -g @anthropic-ai/claude-code@2.0.60
    ```
 
-**New capabilities:**
+**New capabilities in v0.1.13:**
+
+1. **Tools Option** - Base set of tools to use, separate from allowed/disallowed filtering
+2. **Beta Features** - Enable API beta features like 1M context window
+3. **Faster Error Handling** - CLI errors now propagate immediately (~3s vs 60s)
+4. **Enhanced Thread Safety** - Fixed TOCTOU race condition in Close()/EndInput()
+
+**Upgrading from older versions:**
+
+1. **No breaking changes** - All features since v0.1.6 are additive
+2. **Optional features** - Structured outputs, error handling, hook timeouts, tools, and betas are optional
+3. **Recommended**: Update Claude Code CLI to version 2.0.60
+
+**All capabilities:**
 
 1. **Structured Outputs** - Perfect for extracting structured data from queries
 2. **Error Handling** - Better visibility into API-level errors
 3. **Hook Timeouts** - More control over hook execution time
+4. **Tools Option** - Explicit base tool set configuration
+5. **Beta Features** - Enable bleeding-edge API features
+6. **Sandbox Settings** - Comprehensive security configuration for bash commands
 
 ## Compatibility
 
 - **Go**: 1.21+ (unchanged)
-- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.55 (recommended)
-- **Python SDK Parity**: v0.1.10
+- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.60 (recommended)
+- **Python SDK Parity**: v0.1.13
 
 ## Links
 

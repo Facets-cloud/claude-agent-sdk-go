@@ -283,7 +283,27 @@ func (t *SubprocessCLITransport) buildCommand() ([]string, error) {
 		}
 	}
 
-	// Tool restrictions
+	// Tools option (base set of tools)
+	if t.options.Tools != nil {
+		switch tools := t.options.Tools.(type) {
+		case []string:
+			if len(tools) == 0 {
+				args = append(args, "--tools", "")
+			} else {
+				args = append(args, "--tools", strings.Join(tools, ","))
+			}
+		case map[string]interface{}:
+			// Preset object - 'claude_code' preset maps to 'default'
+			if tools["type"] == "preset" {
+				args = append(args, "--tools", "default")
+			}
+		case ToolsPreset:
+			// Preset object - 'claude_code' preset maps to 'default'
+			args = append(args, "--tools", "default")
+		}
+	}
+
+	// Tool restrictions (filter from base tools)
 	if len(t.options.AllowedTools) > 0 {
 		args = append(args, "--allowedTools", strings.Join(t.options.AllowedTools, ","))
 	}
@@ -302,6 +322,15 @@ func (t *SubprocessCLITransport) buildCommand() ([]string, error) {
 	}
 	if t.options.FallbackModel != nil {
 		args = append(args, "--fallback-model", *t.options.FallbackModel)
+	}
+
+	// Beta features
+	if len(t.options.Betas) > 0 {
+		betaStrs := make([]string, len(t.options.Betas))
+		for i, beta := range t.options.Betas {
+			betaStrs[i] = string(beta)
+		}
+		args = append(args, "--betas", strings.Join(betaStrs, ","))
 	}
 
 	// Budget and token control
@@ -626,6 +655,10 @@ func (t *SubprocessCLITransport) ReadMessages(ctx context.Context) (<-chan map[s
 
 // EndInput closes stdin to signal end of input.
 func (t *SubprocessCLITransport) EndInput() error {
+	// Acquire write lock first to prevent TOCTOU race with Write()
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -649,6 +682,10 @@ func (t *SubprocessCLITransport) IsReady() bool {
 
 // Close terminates the subprocess and cleans up.
 func (t *SubprocessCLITransport) Close() error {
+	// Acquire write lock first to prevent TOCTOU race with Write()
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

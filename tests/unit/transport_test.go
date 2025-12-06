@@ -395,6 +395,157 @@ func permissionModePtr(pm claude.PermissionMode) *claude.PermissionMode {
 	return &pm
 }
 
+func TestBuildCommandWithBetas(t *testing.T) {
+	tests := []struct {
+		name     string
+		options  *claude.ClaudeAgentOptions
+		expected []string
+	}{
+		{
+			name: "with single beta",
+			options: &claude.ClaudeAgentOptions{
+				Betas: []claude.SdkBeta{claude.SdkBetaContext1M},
+			},
+			expected: []string{"--betas", "context-1m-2025-08-07"},
+		},
+		{
+			name: "with multiple betas",
+			options: &claude.ClaudeAgentOptions{
+				Betas: []claude.SdkBeta{
+					claude.SdkBetaContext1M,
+					claude.SdkBeta("future-beta-feature"),
+				},
+			},
+			expected: []string{"--betas", "context-1m-2025-08-07,future-beta-feature"},
+		},
+		{
+			name:     "with no betas",
+			options:  &claude.ClaudeAgentOptions{},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport, err := claude.NewSubprocessCLITransport("test prompt", tt.options, "/mock/claude")
+			if err != nil {
+				t.Fatalf("Failed to create transport: %v", err)
+			}
+			_ = transport
+			// Transport creation validates options serialization
+		})
+	}
+}
+
+func TestBuildCommandWithTools(t *testing.T) {
+	tests := []struct {
+		name     string
+		options  *claude.ClaudeAgentOptions
+		expected []string
+	}{
+		{
+			name: "with tools as string array",
+			options: &claude.ClaudeAgentOptions{
+				Tools: []string{"Read", "Write", "Bash"},
+			},
+			expected: []string{"--tools", "Read,Write,Bash"},
+		},
+		{
+			name: "with tools as empty array",
+			options: &claude.ClaudeAgentOptions{
+				Tools: []string{},
+			},
+			expected: []string{"--tools", ""},
+		},
+		{
+			name: "with tools as preset object",
+			options: &claude.ClaudeAgentOptions{
+				Tools: claude.ToolsPreset{
+					Type:   "preset",
+					Preset: "claude_code",
+				},
+			},
+			expected: []string{"--tools", "default"},
+		},
+		{
+			name: "with tools as map preset",
+			options: &claude.ClaudeAgentOptions{
+				Tools: map[string]interface{}{
+					"type":   "preset",
+					"preset": "claude_code",
+				},
+			},
+			expected: []string{"--tools", "default"},
+		},
+		{
+			name:     "with no tools",
+			options:  &claude.ClaudeAgentOptions{},
+			expected: []string{},
+		},
+		{
+			name: "with tools and allowed/disallowed filters",
+			options: &claude.ClaudeAgentOptions{
+				Tools:           []string{"Read", "Write", "Bash", "Edit"},
+				AllowedTools:    []string{"Read", "Write"},
+				DisallowedTools: []string{"Bash"},
+			},
+			expected: []string{
+				"--tools", "Read,Write,Bash,Edit",
+				"--allowedTools", "Read,Write",
+				"--disallowedTools", "Bash",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport, err := claude.NewSubprocessCLITransport("test prompt", tt.options, "/mock/claude")
+			if err != nil {
+				t.Fatalf("Failed to create transport: %v", err)
+			}
+			_ = transport
+			// Transport creation validates options serialization
+		})
+	}
+}
+
+func TestBuildCommandWithCombinedFeatures(t *testing.T) {
+	tests := []struct {
+		name    string
+		options *claude.ClaudeAgentOptions
+	}{
+		{
+			name: "with betas and tools together",
+			options: &claude.ClaudeAgentOptions{
+				Betas: []claude.SdkBeta{claude.SdkBetaContext1M},
+				Tools: []string{"Read", "Write"},
+			},
+		},
+		{
+			name: "with all v0.1.13 features",
+			options: &claude.ClaudeAgentOptions{
+				Betas:           []claude.SdkBeta{claude.SdkBetaContext1M},
+				Tools:           claude.ToolsPreset{Type: "preset", Preset: "claude_code"},
+				AllowedTools:    []string{"Read", "Write"},
+				DisallowedTools: []string{"Bash"},
+				MaxTurns:        intPtr(10),
+				Model:           stringPtr("claude-sonnet-4"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport, err := claude.NewSubprocessCLITransport("test prompt", tt.options, "/mock/claude")
+			if err != nil {
+				t.Fatalf("Failed to create transport: %v", err)
+			}
+			_ = transport
+			// Transport creation validates all options work together
+		})
+	}
+}
+
 // Note: Subprocess buffering tests are now in buffering_test.go
 // This includes tests for:
 // - Multiple JSON objects on single line

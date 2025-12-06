@@ -15,6 +15,15 @@ const (
 	PermissionModeBypassPermissions PermissionMode = "bypassPermissions"
 )
 
+// SdkBeta defines beta features that can be passed to the API.
+// See https://docs.anthropic.com/en/api/beta-headers
+type SdkBeta string
+
+const (
+	// SdkBetaContext1M enables the 1 million token context window
+	SdkBetaContext1M SdkBeta = "context-1m-2025-08-07"
+)
+
 // SettingSource defines where settings are loaded from.
 type SettingSource string
 
@@ -158,6 +167,12 @@ type SystemPromptPreset struct {
 	Type   string  `json:"type"`
 	Preset string  `json:"preset"`
 	Append *string `json:"append,omitempty"`
+}
+
+// ToolsPreset represents a tools preset configuration.
+type ToolsPreset struct {
+	Type   string `json:"type"`   // "preset"
+	Preset string `json:"preset"` // "claude_code"
 }
 
 // AgentDefinition represents a custom agent configuration.
@@ -659,7 +674,10 @@ type SandboxSettings struct {
 
 // ClaudeAgentOptions contains all configuration options for Claude SDK.
 type ClaudeAgentOptions struct {
-	// Tool restrictions
+	// Base set of tools to use (separate from allowed/disallowed filtering)
+	Tools interface{} `json:"tools,omitempty"` // Can be []string or ToolsPreset
+
+	// Tool restrictions (filter from base tools)
 	AllowedTools    []string `json:"allowed_tools,omitempty"`
 	DisallowedTools []string `json:"disallowed_tools,omitempty"`
 
@@ -682,6 +700,9 @@ type ClaudeAgentOptions struct {
 	// Model
 	Model         *string `json:"model,omitempty"`
 	FallbackModel *string `json:"fallback_model,omitempty"`
+
+	// Beta features - see https://docs.anthropic.com/en/api/beta-headers
+	Betas []SdkBeta `json:"betas,omitempty"`
 
 	// Structured outputs
 	OutputFormat map[string]interface{} `json:"output_format,omitempty"`
