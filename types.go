@@ -707,6 +707,12 @@ type ClaudeAgentOptions struct {
 	// Structured outputs
 	OutputFormat map[string]interface{} `json:"output_format,omitempty"`
 
+	// File checkpointing
+	// Enable file checkpointing to track file changes during the session.
+	// When enabled, files can be rewound to their state at any user message
+	// using the RewindFiles() method.
+	EnableFileCheckpointing bool `json:"enable_file_checkpointing,omitempty"`
+
 	// Budget and token control
 	MaxBudgetUSD      *float64 `json:"max_budget_usd,omitempty"`
 	MaxThinkingTokens *int     `json:"max_thinking_tokens,omitempty"`

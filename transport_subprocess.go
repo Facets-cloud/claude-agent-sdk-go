@@ -507,6 +507,11 @@ func (t *SubprocessCLITransport) buildEnv() []string {
 	env = append(env, "CLAUDE_CODE_ENTRYPOINT=sdk-go")
 	env = append(env, fmt.Sprintf("CLAUDE_AGENT_SDK_VERSION=%s", SDKVersion))
 
+	// Enable file checkpointing if requested
+	if t.options.EnableFileCheckpointing {
+		env = append(env, "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true")
+	}
+
 	// Set PWD if cwd is specified
 	if t.cwd != "" {
 		env = append(env, fmt.Sprintf("PWD=%s", t.cwd))

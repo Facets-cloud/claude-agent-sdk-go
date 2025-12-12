@@ -497,6 +497,21 @@ func (q *queryHandler) SetModel(ctx context.Context, model string) error {
 	return err
 }
 
+// RewindFiles rewinds tracked files to their state at a specific user message.
+//
+// Requires file checkpointing to be enabled via the EnableFileCheckpointing option.
+//
+// Args:
+//   - userMessageID: UUID of the user message to rewind to
+func (q *queryHandler) RewindFiles(ctx context.Context, userMessageID string) error {
+	request := map[string]interface{}{
+		"subtype":         "rewind_files",
+		"user_message_id": userMessageID,
+	}
+	_, err := q.sendControlRequest(ctx, request)
+	return err
+}
+
 // StreamInput streams input messages to transport.
 //
 // If SDK MCP servers or hooks are present, waits for the first result

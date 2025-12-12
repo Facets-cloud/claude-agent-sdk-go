@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2025-12-12
+
+### Added - File Checkpointing and Rewind Support
+
+This update brings file checkpointing support, matching Python SDK v0.1.15.
+
+#### File Checkpointing Feature (from Python v0.1.15)
+- **`EnableFileCheckpointing`** field in `ClaudeAgentOptions` - Enable tracking of file changes during the session
+- **`RewindFiles(userMessageID)`** method on `ClaudeSDKClient` - Rewind tracked files to their state at a specific checkpoint
+- **`RewindFiles(userMessageID)`** method on `queryHandler` - Internal implementation for file rewinding
+- **Environment variable support** - Sets `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true` when enabled
+- **Control protocol support** - Added `rewind_files` control request subtype with `user_message_id` parameter
+
+**Use cases:**
+- Explore different implementation approaches without losing previous work
+- Recover from unwanted file modifications
+- Create checkpoints during multi-step operations
+- Test variations safely with ability to rollback
+
+**Usage:**
+```go
+options := &claude.ClaudeAgentOptions{
+    EnableFileCheckpointing: true,
+}
+client := claude.NewClaudeSDKClient(options)
+ctx := context.Background()
+
+if err := client.Connect(ctx); err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+
+// Send a query that modifies files
+if err := client.SendMessage(ctx, "Refactor the authentication module"); err != nil {
+    log.Fatal(err)
+}
+
+var checkpointID string
+for msg := range client.ReceiveResponse(ctx) {
+    if userMsg, ok := msg.(*UserMessage); ok {
+        checkpointID = userMsg.UUID // Save checkpoint for later
+    }
+}
+
+// Try another approach
+if err := client.SendMessage(ctx, "Actually, use a different pattern"); err != nil {
+    log.Fatal(err)
+}
+
+// Rewind back to the first checkpoint if needed
+if err := client.RewindFiles(ctx, checkpointID); err != nil {
+    log.Fatal(err)
+}
+```
+
+### Changed
+- **CLI version updated:** 2.0.60 → 2.0.62
+  - `BundledCLIVersion` updated to "2.0.62"
+  - `RecommendedCLIVersion` updated to "2.0.62"
+- **SDK version:** Updated to v0.1.15 for parity with Python SDK
+
+### Added
+- Unit tests for file checkpointing feature (3 test cases)
+- Comprehensive documentation and examples for file rewind functionality
+
+---
+
+## [0.1.14] - 2025-12-12
+
+### Changed
+- **CLI version updated:** 2.0.60 → 2.0.61 (internal update)
+  - Updated bundled CLI to version 2.0.61
+
+---
+
 ## [0.1.13] - 2025-12-06
 
 ### Added - Complete Parity with Python SDK v0.1.13
@@ -370,8 +445,8 @@ This is the first changelog entry. The Go SDK was originally ported from Python 
 ## Compatibility
 
 - **Go**: 1.21+ (unchanged)
-- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.60 (recommended)
-- **Python SDK Parity**: v0.1.13
+- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.62 (recommended)
+- **Python SDK Parity**: v0.1.15
 
 ## Links
 

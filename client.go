@@ -391,6 +391,51 @@ func (c *ClaudeSDKClient) SetModel(ctx context.Context, model string) error {
 	return c.queryHandler.SetModel(ctx, model)
 }
 
+// RewindFiles rewinds tracked files to their state at a specific user message.
+//
+// Requires file checkpointing to be enabled via the EnableFileCheckpointing option
+// when creating the ClaudeSDKClient.
+//
+// Args:
+//   - userMessageID: UUID of the user message to rewind to. This should be
+//     the UUID field from a UserMessage received during the conversation.
+//
+// Example:
+//
+//	options := &claude.ClaudeAgentOptions{
+//	    EnableFileCheckpointing: true,
+//	}
+//	client := claude.NewClaudeSDKClient(options)
+//	ctx := context.Background()
+//
+//	if err := client.Connect(ctx); err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer client.Close()
+//
+//	// Send a query
+//	if err := client.SendMessage(ctx, "Make some changes to my files"); err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	var checkpointID string
+//	for msg := range client.ReceiveResponse(ctx) {
+//	    if userMsg, ok := msg.(*UserMessage); ok {
+//	        checkpointID = userMsg.UUID // Save this for later
+//	    }
+//	}
+//
+//	// Later, rewind to that point
+//	if err := client.RewindFiles(ctx, checkpointID); err != nil {
+//	    log.Fatal(err)
+//	}
+func (c *ClaudeSDKClient) RewindFiles(ctx context.Context, userMessageID string) error {
+	if c.queryHandler == nil {
+		return NewCLIConnectionError("not connected. Call Connect() first", nil)
+	}
+	return c.queryHandler.RewindFiles(ctx, userMessageID)
+}
+
 // GetServerInfo retrieves server initialization info including available commands.
 //
 // Returns initialization information from the Claude Code server including:

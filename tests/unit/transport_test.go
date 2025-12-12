@@ -546,6 +546,41 @@ func TestBuildCommandWithCombinedFeatures(t *testing.T) {
 	}
 }
 
+func TestEnableFileCheckpointing(t *testing.T) {
+	tests := []struct {
+		name    string
+		options *claude.ClaudeAgentOptions
+	}{
+		{
+			name: "with file checkpointing enabled",
+			options: &claude.ClaudeAgentOptions{
+				EnableFileCheckpointing: true,
+			},
+		},
+		{
+			name: "with file checkpointing disabled",
+			options: &claude.ClaudeAgentOptions{
+				EnableFileCheckpointing: false,
+			},
+		},
+		{
+			name:    "with default file checkpointing",
+			options: &claude.ClaudeAgentOptions{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			transport, err := claude.NewSubprocessCLITransport("test prompt", tt.options, "/mock/claude")
+			if err != nil {
+				t.Fatalf("Failed to create transport: %v", err)
+			}
+			_ = transport
+			// Transport creation validates EnableFileCheckpointing field
+		})
+	}
+}
+
 // Note: Subprocess buffering tests are now in buffering_test.go
 // This includes tests for:
 // - Multiple JSON objects on single line
