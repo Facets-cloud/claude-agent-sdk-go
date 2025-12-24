@@ -85,6 +85,64 @@ func TestParseUserMessage(t *testing.T) {
 			t.Errorf("expected tool_use_id 'tool_123', got %s", toolResultBlock.ToolUseID)
 		}
 	})
+
+	t.Run("with uuid field", func(t *testing.T) {
+		// The uuid field is needed for file checkpointing with rewind_files()
+		data := map[string]interface{}{
+			"type": "user",
+			"uuid": "msg-abc123-def456",
+			"message": map[string]interface{}{
+				"role": "user",
+				"content": []interface{}{
+					map[string]interface{}{
+						"type": "text",
+						"text": "Hello",
+					},
+				},
+			},
+		}
+
+		msg, err := claude.ParseMessage(data)
+		if err != nil {
+			t.Fatalf("ParseMessage failed: %v", err)
+		}
+
+		userMsg, ok := msg.(*claude.UserMessage)
+		if !ok {
+			t.Fatalf("expected *UserMessage, got %T", msg)
+		}
+
+		if userMsg.UUID == nil {
+			t.Fatal("expected UUID to be set, got nil")
+		}
+		if *userMsg.UUID != "msg-abc123-def456" {
+			t.Errorf("expected UUID 'msg-abc123-def456', got %s", *userMsg.UUID)
+		}
+	})
+
+	t.Run("without uuid field", func(t *testing.T) {
+		data := map[string]interface{}{
+			"type": "user",
+			"message": map[string]interface{}{
+				"role":    "user",
+				"content": "Hello",
+			},
+		}
+
+		msg, err := claude.ParseMessage(data)
+		if err != nil {
+			t.Fatalf("ParseMessage failed: %v", err)
+		}
+
+		userMsg, ok := msg.(*claude.UserMessage)
+		if !ok {
+			t.Fatalf("expected *UserMessage, got %T", msg)
+		}
+
+		if userMsg.UUID != nil {
+			t.Errorf("expected UUID to be nil, got %s", *userMsg.UUID)
+		}
+	})
 }
 
 func TestParseAssistantMessage(t *testing.T) {

@@ -44,6 +44,13 @@ func parseUserMessage(data map[string]interface{}) (*UserMessage, error) {
 	}
 
 	content := message["content"]
+
+	// Extract UUID from data (needed for file checkpointing with rewind_files)
+	var uuid *string
+	if u, ok := data["uuid"].(string); ok {
+		uuid = &u
+	}
+
 	var parentToolUseID *string
 	if pid, ok := data["parent_tool_use_id"].(string); ok {
 		parentToolUseID = &pid
@@ -53,6 +60,7 @@ func parseUserMessage(data map[string]interface{}) (*UserMessage, error) {
 	if contentStr, ok := content.(string); ok {
 		return &UserMessage{
 			Content:         contentStr,
+			UUID:            uuid,
 			ParentToolUseID: parentToolUseID,
 		}, nil
 	}
@@ -74,6 +82,7 @@ func parseUserMessage(data map[string]interface{}) (*UserMessage, error) {
 
 	return &UserMessage{
 		Content:         blocks,
+		UUID:            uuid,
 		ParentToolUseID: parentToolUseID,
 	}, nil
 }

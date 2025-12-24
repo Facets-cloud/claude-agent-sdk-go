@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18] - 2025-12-24
+
+### Added - Complete Parity with Python SDK v0.1.18
+
+This update brings the Go SDK to parity with Python SDK v0.1.18.
+
+#### UserMessage UUID Field (from Python v0.1.17)
+- **`UUID`** field added to `UserMessage` struct - Provides access to message identifiers needed for file checkpointing
+- **Parser updated** - Extracts UUID from CLI response data
+- **Improved developer experience** - Makes it easier to use `RewindFiles()` by providing direct access to message UUIDs
+
+**Usage with file checkpointing:**
+```go
+options := &claude.ClaudeAgentOptions{
+    EnableFileCheckpointing: true,
+}
+client := claude.NewClaudeSDKClient(options)
+
+// During response processing
+for msg := range client.ReceiveResponse(ctx) {
+    if userMsg, ok := msg.(*claude.UserMessage); ok {
+        if userMsg.UUID != nil {
+            checkpointID := *userMsg.UUID  // Save for later use with RewindFiles()
+        }
+    }
+}
+
+// Later, rewind to that checkpoint
+client.RewindFiles(ctx, checkpointID)
+```
+
+### Changed
+- **CLI version updated:** 2.0.62 → 2.0.76
+  - `BundledCLIVersion` updated to "2.0.76"
+  - `RecommendedCLIVersion` updated to "2.0.76"
+- **SDK version:** Updated to v0.1.18 for parity with Python SDK
+
+### Added
+- Unit tests for UserMessage UUID parsing (2 test cases)
+
+---
+
+## [0.1.17] - 2025-12-24
+
+### Added
+- **UserMessage UUID field** - Added `uuid` field to `UserMessage` response type
+
+### Changed
+- **CLI version:** 2.0.62 → 2.0.70
+
+---
+
+## [0.1.16] - 2025-12-24
+
+### Fixed
+- **Rate limit detection** - Error field parsing in AssistantMessage was already implemented in Go SDK
+
+### Changed
+- **CLI version:** 2.0.62 → 2.0.68
+
+---
+
 ## [0.1.15] - 2025-12-12
 
 ### Added - File Checkpointing and Rewind Support
@@ -445,8 +507,8 @@ This is the first changelog entry. The Go SDK was originally ported from Python 
 ## Compatibility
 
 - **Go**: 1.21+ (unchanged)
-- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.62 (recommended)
-- **Python SDK Parity**: v0.1.15
+- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.76 (recommended)
+- **Python SDK Parity**: v0.1.18
 
 ## Links
 

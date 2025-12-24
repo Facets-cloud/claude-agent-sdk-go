@@ -113,6 +113,7 @@ func (ImageBlock) isContentBlock() {}
 // UserMessage represents a user message.
 type UserMessage struct {
 	Content         interface{} `json:"content"` // Can be string or []ContentBlock
+	UUID            *string     `json:"uuid,omitempty"`
 	ParentToolUseID *string     `json:"parent_tool_use_id,omitempty"`
 }
 
