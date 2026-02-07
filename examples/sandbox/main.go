@@ -59,16 +59,16 @@ func networkSandboxExample() {
 		Sandbox: &claude.SandboxSettings{
 			Enabled: boolPtr(true),
 			Network: &claude.SandboxNetworkConfig{
-				Enabled:        boolPtr(true),
-				AllowedDomains: []string{"*.github.com", "api.anthropic.com"},
-				BlockedDomains: []string{"malicious.com", "dangerous.net"},
+				AllowUnixSockets:    []string{"/var/run/docker.sock"},
+				AllowAllUnixSockets: boolPtr(false),
+				AllowLocalBinding:   boolPtr(true),
 			},
 		},
 	}
 
-	fmt.Printf("Network enabled: %v\n", *options.Sandbox.Network.Enabled)
-	fmt.Printf("Allowed domains: %v\n", options.Sandbox.Network.AllowedDomains)
-	fmt.Printf("Blocked domains: %v\n", options.Sandbox.Network.BlockedDomains)
+	fmt.Printf("Allow unix sockets: %v\n", options.Sandbox.Network.AllowUnixSockets)
+	fmt.Printf("Allow all unix sockets: %v\n", *options.Sandbox.Network.AllowAllUnixSockets)
+	fmt.Printf("Allow local binding: %v\n", *options.Sandbox.Network.AllowLocalBinding)
 	fmt.Println("Note: These settings control network access within the sandbox")
 }
 
@@ -91,16 +91,16 @@ func ignoreViolationsExample() {
 		Sandbox: &claude.SandboxSettings{
 			Enabled: boolPtr(true),
 			IgnoreViolations: &claude.SandboxIgnoreViolations{
-				Commands: []string{"ls", "cat"},
-				Paths:    []string{"/tmp/*", "/var/log/*"},
+				File:    []string{"/tmp/*", "/var/log/*"},
+				Network: []string{"localhost:*"},
 			},
 		},
 	}
 
 	if options.Sandbox.IgnoreViolations != nil {
-		fmt.Printf("Ignored commands: %v\n", options.Sandbox.IgnoreViolations.Commands)
-		fmt.Printf("Ignored paths: %v\n", options.Sandbox.IgnoreViolations.Paths)
-		fmt.Println("Note: Violations for these commands/paths will be ignored")
+		fmt.Printf("Ignored file patterns: %v\n", options.Sandbox.IgnoreViolations.File)
+		fmt.Printf("Ignored network patterns: %v\n", options.Sandbox.IgnoreViolations.Network)
+		fmt.Println("Note: Violations for these patterns will be ignored")
 	}
 }
 
@@ -118,8 +118,7 @@ func completeExample() {
 			ExcludedCommands:         []string{"git"},
 			AllowUnsandboxedCommands: boolPtr(false),
 			Network: &claude.SandboxNetworkConfig{
-				Enabled:        boolPtr(true),
-				AllowedDomains: []string{"*.github.com"},
+				AllowLocalBinding: boolPtr(true),
 			},
 		},
 		MaxTurns: intPtr(10),

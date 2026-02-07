@@ -107,7 +107,7 @@ func TestSubprocessCommandBuilding(t *testing.T) {
 				"--output-format", "stream-json",
 				"--verbose",
 				"--setting-sources", "",
-				"--print", "--", "Hello",
+				"--input-format", "stream-json",
 			},
 		},
 		{
@@ -320,16 +320,16 @@ func TestCLIDiscovery(t *testing.T) {
 }
 
 func TestStreamingModeDetection(t *testing.T) {
-	t.Run("string prompt is non-streaming", func(t *testing.T) {
+	t.Run("string prompt always uses streaming mode", func(t *testing.T) {
 		trans, err := claude.NewSubprocessCLITransport("test", &claude.ClaudeAgentOptions{}, "/mock/claude")
 		if err != nil {
 			t.Fatalf("failed to create transport: %v", err)
 		}
 		_ = trans
-		// Transport should be created for non-streaming mode
+		// Transport should be created in streaming mode (v0.1.31: always streaming)
 	})
 
-	t.Run("channel prompt is streaming", func(t *testing.T) {
+	t.Run("channel prompt uses streaming mode", func(t *testing.T) {
 		ch := make(chan map[string]interface{})
 		close(ch)
 		trans, err := claude.NewSubprocessCLITransport(ch, &claude.ClaudeAgentOptions{}, "/mock/claude")
@@ -337,7 +337,7 @@ func TestStreamingModeDetection(t *testing.T) {
 			t.Fatalf("failed to create transport: %v", err)
 		}
 		_ = trans
-		// Transport should be created for streaming mode
+		// Transport should be created in streaming mode
 	})
 }
 

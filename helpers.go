@@ -54,6 +54,32 @@ func extractSdkMcpServers(servers map[string]McpServerConfig) map[string]interfa
 	return sdkMcpServers
 }
 
+// convertAgentsToDicts converts AgentDefinition map to a list of dict-format agent definitions
+// for the initialize request. Each agent includes its name from the map key.
+func convertAgentsToDicts(agents map[string]AgentDefinition) []map[string]interface{} {
+	if len(agents) == 0 {
+		return nil
+	}
+
+	result := make([]map[string]interface{}, 0, len(agents))
+	for name, def := range agents {
+		agentDict := map[string]interface{}{
+			"name":        name,
+			"description": def.Description,
+			"prompt":      def.Prompt,
+		}
+		if len(def.Tools) > 0 {
+			agentDict["tools"] = def.Tools
+		}
+		if def.Model != nil {
+			agentDict["model"] = *def.Model
+		}
+		result = append(result, agentDict)
+	}
+
+	return result
+}
+
 // validateAndConfigurePermissions validates permission settings and returns configured options.
 // If CanUseTool is set, it validates compatibility and sets PermissionPromptToolName to "stdio".
 // For streaming mode validation, pass isStreaming=true.

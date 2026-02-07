@@ -56,12 +56,19 @@ func parseUserMessage(data map[string]interface{}) (*UserMessage, error) {
 		parentToolUseID = &pid
 	}
 
+	// Extract tool_use_result if present
+	var toolUseResult map[string]interface{}
+	if tur, ok := data["tool_use_result"].(map[string]interface{}); ok {
+		toolUseResult = tur
+	}
+
 	// Content can be string or []ContentBlock
 	if contentStr, ok := content.(string); ok {
 		return &UserMessage{
 			Content:         contentStr,
 			UUID:            uuid,
 			ParentToolUseID: parentToolUseID,
+			ToolUseResult:   toolUseResult,
 		}, nil
 	}
 
@@ -84,6 +91,7 @@ func parseUserMessage(data map[string]interface{}) (*UserMessage, error) {
 		Content:         blocks,
 		UUID:            uuid,
 		ParentToolUseID: parentToolUseID,
+		ToolUseResult:   toolUseResult,
 	}, nil
 }
 
@@ -118,7 +126,7 @@ func parseAssistantMessage(data map[string]interface{}) (*AssistantMessage, erro
 	}
 
 	var errorField *AssistantMessageError
-	if errStr, ok := message["error"].(string); ok {
+	if errStr, ok := data["error"].(string); ok {
 		err := AssistantMessageError(errStr)
 		errorField = &err
 	}

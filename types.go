@@ -37,14 +37,16 @@ const (
 type HookEvent string
 
 const (
-	HookEventPreToolUse       HookEvent = "PreToolUse"
-	HookEventPostToolUse      HookEvent = "PostToolUse"
-	HookEventUserPromptSubmit HookEvent = "UserPromptSubmit"
-	HookEventStop             HookEvent = "Stop"
-	HookEventSubagentStop     HookEvent = "SubagentStop"
-	HookEventPreCompact       HookEvent = "PreCompact"
-	HookEventSessionStart     HookEvent = "SessionStart"
-	HookEventSessionEnd       HookEvent = "SessionEnd"
+	HookEventPreToolUse          HookEvent = "PreToolUse"
+	HookEventPostToolUse         HookEvent = "PostToolUse"
+	HookEventPostToolUseFailure  HookEvent = "PostToolUseFailure"
+	HookEventUserPromptSubmit    HookEvent = "UserPromptSubmit"
+	HookEventStop                HookEvent = "Stop"
+	HookEventSubagentStop        HookEvent = "SubagentStop"
+	HookEventSubagentStart       HookEvent = "SubagentStart"
+	HookEventPreCompact          HookEvent = "PreCompact"
+	HookEventNotification        HookEvent = "Notification"
+	HookEventPermissionRequest   HookEvent = "PermissionRequest"
 )
 
 // AssistantMessageError represents error types that can occur in assistant messages.
@@ -112,9 +114,10 @@ func (ImageBlock) isContentBlock() {}
 
 // UserMessage represents a user message.
 type UserMessage struct {
-	Content         interface{} `json:"content"` // Can be string or []ContentBlock
-	UUID            *string     `json:"uuid,omitempty"`
-	ParentToolUseID *string     `json:"parent_tool_use_id,omitempty"`
+	Content         interface{}            `json:"content"` // Can be string or []ContentBlock
+	UUID            *string                `json:"uuid,omitempty"`
+	ParentToolUseID *string                `json:"parent_tool_use_id,omitempty"`
+	ToolUseResult   map[string]interface{} `json:"tool_use_result,omitempty"`
 }
 
 func (UserMessage) isMessage() {}
@@ -447,6 +450,7 @@ type PreToolUseHookInput struct {
 	HookEventName string                 `json:"hook_event_name"` // "PreToolUse"
 	ToolName      string                 `json:"tool_name"`
 	ToolInput     map[string]interface{} `json:"tool_input"`
+	ToolUseID     string                 `json:"tool_use_id"`
 }
 
 // PostToolUseHookInput is the input data for PostToolUse hook events.
@@ -456,6 +460,17 @@ type PostToolUseHookInput struct {
 	ToolName      string                 `json:"tool_name"`
 	ToolInput     map[string]interface{} `json:"tool_input"`
 	ToolResponse  interface{}            `json:"tool_response"`
+	ToolUseID     string                 `json:"tool_use_id"`
+}
+
+// PostToolUseFailureHookInput is the input data for PostToolUseFailure hook events.
+type PostToolUseFailureHookInput struct {
+	BaseHookInput
+	HookEventName string                 `json:"hook_event_name"` // "PostToolUseFailure"
+	ToolName      string                 `json:"tool_name"`
+	ToolInput     map[string]interface{} `json:"tool_input"`
+	ToolUseID     string                 `json:"tool_use_id"`
+	ToolError     string                 `json:"tool_error"`
 }
 
 // UserPromptSubmitHookInput is the input data for UserPromptSubmit hook events.
@@ -475,8 +490,20 @@ type StopHookInput struct {
 // SubagentStopHookInput is the input data for SubagentStop hook events.
 type SubagentStopHookInput struct {
 	BaseHookInput
-	HookEventName  string `json:"hook_event_name"` // "SubagentStop"
-	StopHookActive bool   `json:"stop_hook_active"`
+	HookEventName      string `json:"hook_event_name"` // "SubagentStop"
+	StopHookActive     bool   `json:"stop_hook_active"`
+	AgentID            string `json:"agent_id"`
+	AgentTranscriptPath string `json:"agent_transcript_path"`
+	AgentType          string `json:"agent_type"`
+}
+
+// SubagentStartHookInput is the input data for SubagentStart hook events.
+type SubagentStartHookInput struct {
+	BaseHookInput
+	HookEventName      string `json:"hook_event_name"` // "SubagentStart"
+	AgentID            string `json:"agent_id"`
+	AgentTranscriptPath string `json:"agent_transcript_path"`
+	AgentType          string `json:"agent_type"`
 }
 
 // PreCompactHookInput is the input data for PreCompact hook events.
@@ -487,16 +514,19 @@ type PreCompactHookInput struct {
 	CustomInstructions *string `json:"custom_instructions,omitempty"`
 }
 
-// SessionStartHookInput is the input data for SessionStart hook events.
-type SessionStartHookInput struct {
+// NotificationHookInput is the input data for Notification hook events.
+type NotificationHookInput struct {
 	BaseHookInput
-	HookEventName string `json:"hook_event_name"` // "SessionStart"
+	HookEventName string                 `json:"hook_event_name"` // "Notification"
+	Notification  map[string]interface{} `json:"notification"`
 }
 
-// SessionEndHookInput is the input data for SessionEnd hook events.
-type SessionEndHookInput struct {
+// PermissionRequestHookInput is the input data for PermissionRequest hook events.
+type PermissionRequestHookInput struct {
 	BaseHookInput
-	HookEventName string `json:"hook_event_name"` // "SessionEnd"
+	HookEventName string                 `json:"hook_event_name"` // "PermissionRequest"
+	ToolName      string                 `json:"tool_name"`
+	ToolInput     map[string]interface{} `json:"tool_input"`
 }
 
 // HookMatcher configures hook matching and callbacks.
@@ -572,17 +602,20 @@ type SdkPluginConfig struct {
 // commands executed by Claude. This helps prevent unauthorized network operations
 // while still allowing necessary connectivity.
 type SandboxNetworkConfig struct {
-	// Enabled controls whether network access is allowed in the sandbox.
-	// When false, all network operations are blocked.
-	Enabled *bool `json:"enabled,omitempty"`
+	// AllowUnixSockets is a list of unix socket paths to allow.
+	AllowUnixSockets []string `json:"allowUnixSockets,omitempty"`
 
-	// AllowedDomains is a list of domain names that are permitted for network access.
-	// Supports wildcards (e.g., "*.example.com").
-	AllowedDomains []string `json:"allowedDomains,omitempty"`
+	// AllowAllUnixSockets allows all unix socket connections.
+	AllowAllUnixSockets *bool `json:"allowAllUnixSockets,omitempty"`
 
-	// BlockedDomains is a list of domain names that are explicitly blocked from network access.
-	// Takes precedence over AllowedDomains.
-	BlockedDomains []string `json:"blockedDomains,omitempty"`
+	// AllowLocalBinding allows binding to local network interfaces.
+	AllowLocalBinding *bool `json:"allowLocalBinding,omitempty"`
+
+	// HttpProxyPort specifies the HTTP proxy port for network access.
+	HttpProxyPort *int `json:"httpProxyPort,omitempty"`
+
+	// SocksProxyPort specifies the SOCKS proxy port for network access.
+	SocksProxyPort *int `json:"socksProxyPort,omitempty"`
 }
 
 // SandboxIgnoreViolations specifies which sandbox violations should be ignored.
@@ -590,13 +623,11 @@ type SandboxNetworkConfig struct {
 // By default, sandbox violations are logged and potentially blocked. This struct
 // allows you to selectively ignore certain types of violations.
 type SandboxIgnoreViolations struct {
-	// Commands is a list of command patterns to ignore violations for.
-	// Useful for trusted commands that may trigger false positives.
-	Commands []string `json:"commands,omitempty"`
+	// File is a list of file path patterns to ignore violations for.
+	File []string `json:"file,omitempty"`
 
-	// Paths is a list of file path patterns to ignore violations for.
-	// Useful for known safe directories or files.
-	Paths []string `json:"paths,omitempty"`
+	// Network is a list of network patterns to ignore violations for.
+	Network []string `json:"network,omitempty"`
 }
 
 // SandboxSettings configures bash command sandboxing behavior.
@@ -748,4 +779,8 @@ type ClaudeAgentOptions struct {
 
 	// Plugins
 	Plugins []SdkPluginConfig `json:"plugins,omitempty"`
+
+	// CliPath specifies a custom path to the Claude Code CLI binary.
+	// If set, this path will be used instead of auto-discovery.
+	CliPath *string `json:"-"` // Not sent to CLI
 }

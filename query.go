@@ -2,6 +2,7 @@ package claude
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 )
 
@@ -88,9 +89,8 @@ func processQuery(
 		options = &ClaudeAgentOptions{}
 	}
 
-	// Validate and configure permission settings
-	_, isStreaming := prompt.(<-chan map[string]interface{})
-	configuredOptions, err := validateAndConfigurePermissions(options, isStreaming)
+	// Always use streaming mode (v0.1.31)
+	configuredOptions, err := validateAndConfigurePermissions(options, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -113,19 +113,23 @@ func processQuery(
 	// Extract SDK MCP servers using helper function
 	sdkMcpServers := extractSdkMcpServers(configuredOptions.McpServers)
 
+	// Convert agents to dict format for initialize request
+	agents := convertAgentsToDicts(configuredOptions.Agents)
+
 	// Determine buffer size
 	bufferSize := 100 // default
 	if configuredOptions.MessageChannelBufferSize != nil && *configuredOptions.MessageChannelBufferSize > 0 {
 		bufferSize = *configuredOptions.MessageChannelBufferSize
 	}
 
-	// Create queryHandler to handle control protocol
+	// Create queryHandler to handle control protocol (always streaming)
 	q := newQueryHandler(
 		chosenTransport,
-		isStreaming,
+		true, // Always streaming mode
 		configuredOptions.CanUseTool,
 		configuredOptions.Hooks,
 		sdkMcpServers,
+		agents,
 		bufferSize,
 	)
 
@@ -134,18 +138,45 @@ func processQuery(
 		return nil, nil, err
 	}
 
-	// Initialize if streaming
-	if isStreaming {
-		if _, err := q.Initialize(ctx); err != nil {
+	// Initialize via control protocol
+	if _, err := q.Initialize(ctx); err != nil {
+		return nil, nil, err
+	}
+
+	// Handle input based on prompt type
+	if promptChan, ok := prompt.(<-chan map[string]interface{}); ok {
+		// Channel prompt: stream messages in background
+		go func() {
+			q.StreamInput(ctx, promptChan)
+		}()
+	} else if promptStr, ok := prompt.(string); ok {
+		// String prompt: write user message then close input
+		message := map[string]interface{}{
+			"type": "user",
+			"message": map[string]interface{}{
+				"role":    "user",
+				"content": promptStr,
+			},
+			"parent_tool_use_id": nil,
+			"session_id":         "default",
+		}
+		data, _ := json.Marshal(message)
+		if err := chosenTransport.Write(ctx, string(data)+"\n"); err != nil {
 			return nil, nil, err
 		}
-
-		// Stream input in background
-		if promptChan, ok := prompt.(<-chan map[string]interface{}); ok {
-			go func() {
-				q.StreamInput(ctx, promptChan)
-			}()
-		}
+		// For string prompts, we need to wait for result before ending input
+		// if there are hooks or MCP servers that need bidirectional communication
+		go func() {
+			hasHooks := len(configuredOptions.Hooks) > 0
+			if len(sdkMcpServers) > 0 || hasHooks {
+				select {
+				case <-q.firstResultChan:
+				case <-ctx.Done():
+					return
+				}
+			}
+			chosenTransport.EndInput()
+		}()
 	}
 
 	// Create output channels

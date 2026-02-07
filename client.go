@@ -141,6 +141,9 @@ func (c *ClaudeSDKClient) ConnectWithPrompt(ctx context.Context, prompt interfac
 	// Extract SDK MCP servers using helper function
 	sdkMcpServers := extractSdkMcpServers(c.options.McpServers)
 
+	// Convert agents to dict format for initialize request
+	agents := convertAgentsToDicts(c.options.Agents)
+
 	// Determine buffer size
 	bufferSize := 100 // default
 	if options.MessageChannelBufferSize != nil && *options.MessageChannelBufferSize > 0 {
@@ -154,6 +157,7 @@ func (c *ClaudeSDKClient) ConnectWithPrompt(ctx context.Context, prompt interfac
 		options.CanUseTool,
 		options.Hooks,
 		sdkMcpServers,
+		agents,
 		bufferSize,
 	)
 
@@ -434,6 +438,17 @@ func (c *ClaudeSDKClient) RewindFiles(ctx context.Context, userMessageID string)
 		return NewCLIConnectionError("not connected. Call Connect() first", nil)
 	}
 	return c.queryHandler.RewindFiles(ctx, userMessageID)
+}
+
+// GetMcpStatus retrieves the status of MCP servers.
+//
+// Returns status information about configured MCP servers including
+// connection state and available tools.
+func (c *ClaudeSDKClient) GetMcpStatus(ctx context.Context) (map[string]interface{}, error) {
+	if c.queryHandler == nil {
+		return nil, NewCLIConnectionError("not connected. Call Connect() first", nil)
+	}
+	return c.queryHandler.GetMcpStatus(ctx)
 }
 
 // GetServerInfo retrieves server initialization info including available commands.

@@ -476,7 +476,8 @@ func TestParseAssistantMessageWithError(t *testing.T) {
 	// Test parsing AssistantMessage with error field
 	t.Run("with error field", func(t *testing.T) {
 		data := map[string]interface{}{
-			"type": "assistant",
+			"type":  "assistant",
+			"error": "rate_limit",
 			"message": map[string]interface{}{
 				"role":  "assistant",
 				"model": "claude-sonnet-4-5",
@@ -486,7 +487,6 @@ func TestParseAssistantMessageWithError(t *testing.T) {
 						"text": "Error occurred",
 					},
 				},
-				"error": "rate_limit",
 			},
 		}
 
@@ -551,12 +551,12 @@ func TestParseAssistantMessageWithError(t *testing.T) {
 
 		for _, errType := range errorTypes {
 			data := map[string]interface{}{
-				"type": "assistant",
+				"type":  "assistant",
+				"error": string(errType),
 				"message": map[string]interface{}{
 					"role":    "assistant",
 					"model":   "claude-sonnet-4-5",
 					"content": []interface{}{},
-					"error":   string(errType),
 				},
 			}
 

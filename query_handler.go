@@ -17,6 +17,7 @@ type queryHandler struct {
 	canUseTool      CanUseTool
 	hooks           map[string][]hookMatcherInternal
 	sdkMcpServers   map[string]interface{} // Map of server name to MCP server instance
+	agents          []map[string]interface{} // Agent definitions for initialize request
 
 	// Control protocol state
 	pendingControlResponses map[string]chan controlResult
@@ -49,6 +50,7 @@ func newQueryHandler(
 	canUseTool CanUseTool,
 	hooks map[HookEvent][]HookMatcher,
 	sdkMcpServers map[string]interface{},
+	agents []map[string]interface{},
 	bufferSize int,
 ) *queryHandler {
 	// Convert hooks to internal format using helper function
@@ -65,6 +67,7 @@ func newQueryHandler(
 		canUseTool:              canUseTool,
 		hooks:                   internalHooks,
 		sdkMcpServers:           sdkMcpServers,
+		agents:                  agents,
 		pendingControlResponses: make(map[string]chan controlResult),
 		hookCallbacks:           make(map[string]HookCallback),
 		messageChan:             make(chan map[string]interface{}, bufferSize),
@@ -187,6 +190,9 @@ func (q *queryHandler) Initialize(ctx context.Context) (map[string]interface{}, 
 	}
 	if len(hooksConfig) > 0 {
 		request["hooks"] = hooksConfig
+	}
+	if len(q.agents) > 0 {
+		request["agents"] = q.agents
 	}
 
 	response, err := q.sendControlRequest(ctx, request)
@@ -468,6 +474,14 @@ func (q *queryHandler) routeMcpRequest(ctx context.Context, server interface{}, 
 			"message": "Server does not implement MCP protocol",
 		},
 	}
+}
+
+// GetMcpStatus retrieves the MCP server status.
+func (q *queryHandler) GetMcpStatus(ctx context.Context) (map[string]interface{}, error) {
+	request := map[string]interface{}{
+		"subtype": "mcp_status",
+	}
+	return q.sendControlRequest(ctx, request)
 }
 
 // Interrupt sends interrupt control request.

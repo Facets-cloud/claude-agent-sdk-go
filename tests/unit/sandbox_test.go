@@ -40,10 +40,12 @@ func TestSandboxSettingsJSON(t *testing.T) {
 
 func TestSandboxNetworkConfig(t *testing.T) {
 	boolTrue := true
+	httpPort := 8080
 	network := &claude.SandboxNetworkConfig{
-		Enabled:        &boolTrue,
-		AllowedDomains: []string{"*.github.com", "api.anthropic.com"},
-		BlockedDomains: []string{"malicious.com"},
+		AllowUnixSockets:    []string{"/var/run/docker.sock"},
+		AllowAllUnixSockets: &boolTrue,
+		AllowLocalBinding:   &boolTrue,
+		HttpProxyPort:       &httpPort,
 	}
 
 	data, err := json.Marshal(network)
@@ -56,13 +58,17 @@ func TestSandboxNetworkConfig(t *testing.T) {
 		t.Fatalf("Failed to unmarshal JSON: %v", err)
 	}
 
-	if result["enabled"] != true {
-		t.Errorf("Expected enabled=true, got %v", result["enabled"])
+	if result["allowAllUnixSockets"] != true {
+		t.Errorf("Expected allowAllUnixSockets=true, got %v", result["allowAllUnixSockets"])
 	}
 
-	allowedDomains := result["allowedDomains"].([]interface{})
-	if len(allowedDomains) != 2 {
-		t.Errorf("Expected 2 allowed domains, got %d", len(allowedDomains))
+	allowUnixSockets := result["allowUnixSockets"].([]interface{})
+	if len(allowUnixSockets) != 1 {
+		t.Errorf("Expected 1 unix socket, got %d", len(allowUnixSockets))
+	}
+
+	if result["httpProxyPort"] != float64(8080) {
+		t.Errorf("Expected httpProxyPort=8080, got %v", result["httpProxyPort"])
 	}
 }
 
@@ -75,8 +81,7 @@ func TestClaudeAgentOptionsWithSandbox(t *testing.T) {
 			Enabled:          &boolTrue,
 			ExcludedCommands: []string{"docker"},
 			Network: &claude.SandboxNetworkConfig{
-				Enabled:        &boolTrue,
-				AllowedDomains: []string{"*.safe.com"},
+				AllowLocalBinding: &boolTrue,
 			},
 		},
 	}
@@ -97,8 +102,8 @@ func TestClaudeAgentOptionsWithSandbox(t *testing.T) {
 
 func TestSandboxIgnoreViolations(t *testing.T) {
 	ignore := &claude.SandboxIgnoreViolations{
-		Commands: []string{"trusted-cmd"},
-		Paths:    []string{"/safe/path/*"},
+		File:    []string{"/safe/path/*"},
+		Network: []string{"localhost:*"},
 	}
 
 	data, err := json.Marshal(ignore)
@@ -111,13 +116,13 @@ func TestSandboxIgnoreViolations(t *testing.T) {
 		t.Fatalf("Failed to unmarshal JSON: %v", err)
 	}
 
-	commands := result["commands"].([]interface{})
-	if len(commands) != 1 || commands[0] != "trusted-cmd" {
-		t.Errorf("Expected commands=['trusted-cmd'], got %v", commands)
+	files := result["file"].([]interface{})
+	if len(files) != 1 || files[0] != "/safe/path/*" {
+		t.Errorf("Expected file=['/safe/path/*'], got %v", files)
 	}
 
-	paths := result["paths"].([]interface{})
-	if len(paths) != 1 || paths[0] != "/safe/path/*" {
-		t.Errorf("Expected paths=['/safe/path/*'], got %v", paths)
+	network := result["network"].([]interface{})
+	if len(network) != 1 || network[0] != "localhost:*" {
+		t.Errorf("Expected network=['localhost:*'], got %v", network)
 	}
 }

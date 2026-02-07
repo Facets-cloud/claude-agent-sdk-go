@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31] - 2026-02-07
+
+### Added - Complete Parity with Python SDK v0.1.31
+
+This update brings the Go SDK to parity with Python SDK v0.1.31, incorporating all changes from v0.1.19 through v0.1.31.
+
+#### Always-Streaming Architecture (v0.1.31)
+- **All queries now use streaming mode internally** - The `--print` non-streaming path has been removed
+- String prompts are now written to stdin as stream-json messages, then input is closed
+- Simplifies the transport layer by eliminating the non-streaming code path
+
+#### Agents via Initialize Request (v0.1.31)
+- **Agent definitions are now sent via the control protocol's initialize request** instead of `--agents` CLI flag
+- Eliminates command-line length limits and temp file workarounds for large agent definitions
+- Agents are passed as structured data in the initialize control request
+
+#### New Hook Events (v0.1.26, v0.1.29)
+- **`HookEventPostToolUseFailure`** - Fired when a tool use fails
+- **`HookEventNotification`** - Fired for notifications
+- **`HookEventSubagentStart`** - Fired when a subagent starts
+- **`HookEventPermissionRequest`** - Fired for permission requests
+- **Removed** `HookEventSessionStart` and `HookEventSessionEnd` (not in Python SDK)
+
+#### Enhanced Hook Input Types (v0.1.29)
+- **`ToolUseID`** field added to `PreToolUseHookInput` and `PostToolUseHookInput`
+- **`PostToolUseFailureHookInput`** - New struct for PostToolUseFailure events
+- **`SubagentStartHookInput`** - New struct for SubagentStart events
+- **`NotificationHookInput`** - New struct for Notification events
+- **`PermissionRequestHookInput`** - New struct for PermissionRequest events
+- **`AgentID`**, **`AgentTranscriptPath`**, **`AgentType`** fields added to `SubagentStopHookInput`
+- **Removed** `SessionStartHookInput` and `SessionEndHookInput`
+
+#### UserMessage Update (v0.1.22)
+- **`ToolUseResult`** field added to `UserMessage` - Provides access to tool use results in user messages
+
+#### GetMcpStatus Method (v0.1.23)
+- **`GetMcpStatus(ctx)`** method on `ClaudeSDKClient` and `queryHandler` - Retrieves MCP server status
+
+#### CliPath Option
+- **`CliPath`** field added to `ClaudeAgentOptions` - Specify a custom path to the Claude Code CLI binary
+
+#### Parser Fix (v0.1.28)
+- **`error` field** in `AssistantMessage` is now correctly read from the top-level data dict instead of the nested message dict
+
+### Changed
+- **CLI version updated:** 2.0.76 → 2.1.33
+  - `BundledCLIVersion` updated to "2.1.33"
+  - `RecommendedCLIVersion` updated to "2.1.33"
+- **SDK version:** Updated to v0.1.31 for parity with Python SDK
+- **`SandboxNetworkConfig`** fields updated to match Python SDK:
+  - `AllowUnixSockets`, `AllowAllUnixSockets`, `AllowLocalBinding`, `HttpProxyPort`, `SocksProxyPort`
+  - Removed: `Enabled`, `AllowedDomains`, `BlockedDomains`
+- **`SandboxIgnoreViolations`** fields updated to match Python SDK:
+  - `File`, `Network`
+  - Removed: `Commands`, `Paths`
+
+### Removed
+- Non-streaming code path (`--print` flag) from transport
+- `--agents` CLI flag and temp file logic for long agent definitions
+- `HookEventSessionStart` and `HookEventSessionEnd` hook events
+- `SessionStartHookInput` and `SessionEndHookInput` types
+- `isWindows()` helper and command length limit constants
+
+---
+
 ## [0.1.18] - 2025-12-24
 
 ### Added - Complete Parity with Python SDK v0.1.18
@@ -507,8 +572,8 @@ This is the first changelog entry. The Go SDK was originally ported from Python 
 ## Compatibility
 
 - **Go**: 1.21+ (unchanged)
-- **Claude Code CLI**: 2.0.50+ (minimum), 2.0.76 (recommended)
-- **Python SDK Parity**: v0.1.18
+- **Claude Code CLI**: 2.0.50+ (minimum), 2.1.33 (recommended)
+- **Python SDK Parity**: v0.1.31
 
 ## Links
 

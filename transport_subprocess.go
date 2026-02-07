@@ -19,8 +19,6 @@ import (
 const (
 	defaultMaxBufferSize     = 1024 * 1024 // 1MB
 	minimumClaudeCodeVersion = "2.0.0"
-	windowsCmdLengthLimit    = 8000   // Windows command line length limit
-	nonWindowsCmdLengthLimit = 100000 // Non-Windows systems have much higher limits
 )
 
 // SubprocessCLITransport implements Transport using Claude Code CLI subprocess.
@@ -37,7 +35,6 @@ type SubprocessCLITransport struct {
 	ready         bool
 	exitError     error
 	maxBufferSize int
-	tempFiles     []string // Temporary files created for long command lines
 	mu            sync.RWMutex
 	writeMu       sync.Mutex // Serializes concurrent writes to stdin
 	stderrWg      sync.WaitGroup
@@ -49,8 +46,13 @@ func NewSubprocessCLITransport(prompt interface{}, options *ClaudeAgentOptions, 
 		options = &ClaudeAgentOptions{}
 	}
 
-	// Determine if streaming mode
-	_, isStreaming := prompt.(<-chan map[string]interface{})
+	// Always use streaming mode (v0.1.31)
+	isStreaming := true
+
+	// Prefer CliPath from options, then parameter, then auto-discover
+	if options.CliPath != nil && *options.CliPath != "" {
+		cliPath = *options.CliPath
+	}
 
 	// Find CLI if not specified
 	if cliPath == "" {
@@ -186,11 +188,6 @@ func (t *SubprocessCLITransport) Connect(ctx context.Context) error {
 	if shouldPipeStderr && t.stderr != nil {
 		t.stderrWg.Add(1)
 		go t.handleStderr()
-	}
-
-	// For non-streaming mode, close stdin immediately
-	if !t.isStreaming {
-		t.stdin.Close()
 	}
 
 	t.ready = true
@@ -397,11 +394,7 @@ func (t *SubprocessCLITransport) buildCommand() ([]string, error) {
 		args = append(args, "--include-partial-messages")
 	}
 
-	// Agents
-	if len(t.options.Agents) > 0 {
-		agentsJSON, _ := json.Marshal(t.options.Agents)
-		args = append(args, "--agents", string(agentsJSON))
-	}
+	// Agents are now sent via initialize request (v0.1.31), not CLI flag
 
 	// Setting sources
 	if t.options.SettingSources != nil {
@@ -433,65 +426,10 @@ func (t *SubprocessCLITransport) buildCommand() ([]string, error) {
 		}
 	}
 
-	// Input mode
-	if t.isStreaming {
-		args = append(args, "--input-format", "stream-json")
-	} else {
-		// String prompt
-		args = append(args, "--print", "--", t.prompt.(string))
-	}
-
-	// Check if command line is too long (Windows limitation)
-	// This optimization helps when large agent definitions would exceed command line limits
-	cmdStr := strings.Join(args, " ")
-	cmdLengthLimit := nonWindowsCmdLengthLimit
-	if isWindows() {
-		cmdLengthLimit = windowsCmdLengthLimit
-	}
-
-	if len(cmdStr) > cmdLengthLimit && len(t.options.Agents) > 0 {
-		// Command is too long - use temp file for agents
-		// Find the --agents argument and replace its value with @filepath
-		for i, arg := range args {
-			if arg == "--agents" && i+1 < len(args) {
-				agentsJSONValue := args[i+1]
-
-				// Create a temporary file
-				tempFile, err := os.CreateTemp("", "claude-agents-*.json")
-				if err != nil {
-					// Log warning but continue - the command might still work
-					fmt.Fprintf(os.Stderr, "Warning: Failed to create temp file for long command: %v\n", err)
-					break
-				}
-
-				// Write the agents JSON to the file
-				if _, err := tempFile.WriteString(agentsJSONValue); err != nil {
-					tempFile.Close()
-					os.Remove(tempFile.Name())
-					fmt.Fprintf(os.Stderr, "Warning: Failed to write to temp file: %v\n", err)
-					break
-				}
-				tempFile.Close()
-
-				// Track for cleanup
-				t.tempFiles = append(t.tempFiles, tempFile.Name())
-
-				// Replace agents JSON with @filepath reference
-				args[i+1] = "@" + tempFile.Name()
-
-				fmt.Fprintf(os.Stderr, "Command line length (%d) exceeds limit (%d). Using temp file for --agents: %s\n",
-					len(cmdStr), cmdLengthLimit, tempFile.Name())
-				break
-			}
-		}
-	}
+	// Always use streaming input mode (v0.1.31)
+	args = append(args, "--input-format", "stream-json")
 
 	return args, nil
-}
-
-// isWindows returns true if running on Windows
-func isWindows() bool {
-	return os.PathSeparator == '\\' && os.PathListSeparator == ';'
 }
 
 // buildEnv constructs environment variables.
@@ -742,15 +680,6 @@ func (t *SubprocessCLITransport) Close() error {
 	case <-time.After(1 * time.Second):
 		// Stderr reader didn't finish, continue anyway
 	}
-
-	// Clean up temporary files
-	for _, tempFile := range t.tempFiles {
-		if err := os.Remove(tempFile); err != nil {
-			// Log but don't fail on cleanup errors
-			fmt.Fprintf(os.Stderr, "Warning: Failed to remove temp file %s: %v\n", tempFile, err)
-		}
-	}
-	t.tempFiles = nil
 
 	t.cmd = nil
 	t.exitError = nil
